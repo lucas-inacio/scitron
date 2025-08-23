@@ -4,6 +4,8 @@
 
 You can run the program in your browser [here](https://www.lexaloffle.com/bbs/?tid=151141)
 
+![scitron](images/scitron.p64.png)
+
 
 Shield: [![CC BY-NC-SA 4.0][cc-by-nc-sa-shield]][cc-by-nc-sa]
 
