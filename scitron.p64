@@ -1,0 +1,1008 @@
+picotron cartridge // www.picotron.net
+version 2
+
+:: gfx/
+:: gfx/0.gfx
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNS0w
+MS0xNyAxMDozNzo0NCIscmV2aXNpb249Ml1dbHo0AH4AAAASMQAA8yF7WzBdPXtibXA9cHh1AEMg
+EBAE8FYHEAfAF9AXwAcQB-BWLGZsYWdzPTAscGFuX3gIAMt5PTAsem9vbT04fSw_AB-wMQD-----
+-----------------------------------------------------------XUG09OH19
+:: gfx/.info.pod
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTA3LTE5IDEzOjMyOjM1Iixtb2RpZmllZD0iMjAyNS0w
+OC0yMyAxOTowMjoxMyJdXQ==
+:: map/
+:: map/0.map
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNS0w
+OC0wNCAyMTozNTo1MyIscmV2aXNpb249Ml1dbHo0AGgAAABYEAAA8Ah7e2JtcD11c2VyZGF0YSgi
+aTE2IiwzMgMALyIwAQD--------------------78QgiKSxoaWRkZW49ZmFsc2UscGFuX3g9MAgA
+0nk9MCx0aWxlX2g9MTYKABB3CgCAem9vbT0xfX0=
+:: map/.info.pod
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTA3LTE5IDEzOjMyOjM1Iixtb2RpZmllZD0iMjAyNS0w
+OC0yMyAxOTowMjoxMyJdXQ==
+:: sfx/
+:: sfx/0.sfx
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ5Iixtb2RpZmllZD0iMjAyNS0w
+MS0xNyAxMDozNzo0NCIscmV2aXNpb249Ml1dbHo0AKAAAAALCgAA-zBweHUAAygAAAQABA9AEAIO
+AAGgASACoA4ADxAADfDKAQIDQA8PkAQFBgdADJAICQoLQAyQDwwPDQ8ODEAM8P8BAOv-J6oBEAYP
+IBABIAEgAfAAAhACDhABIA8hIAEwD0Dwww8oD--wxg-4Cg--D4AP9w8NAfAJARAGDjAA------_9
+H-8BAKzPyA9AAA8QQP--sPD-AQD-6lD-----KQ==
+:: sfx/.info.pod
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTA3LTE5IDEzOjMyOjM1Iixtb2RpZmllZD0iMjAyNS0w
+OC0yMyAxOTowMjoxMyJdXQ==
+:: algorithm.lua
+--[[pod_format="raw",created="2025-08-04 21:56:15",modified="2025-08-04 21:56:15",revision=0]]
+function Reduce(list, func, init)
+    local result = init or 0
+    for i=1, #list do
+        result = func(result, list[i])
+    end
+    return result
+end
+
+function Foreach(list, func)
+    for _, value in ipairs(list) do
+        func(value)
+    end
+end
+:: calc.lua
+--[[pod_format="raw",created="2025-08-10 03:30:37",modified="2025-08-23 15:53:03",revision=298]]
+include "parser.lua"
+
+local KNOWN_VARS = {
+	PI = math.pi
+}
+
+local function replace_vars(expr)
+	local res = expr:sub(1, #expr)
+	for i, var in pairs(KNOWN_VARS) do
+		res = res:gsub(i, string.format("%.40e", var))
+	end
+	return res
+end
+
+local function isOp(expr)
+	return expr:match("^[%+%-%*/^%(%)]$") ~= nil
+end
+
+Calc = {}
+Calc.alternate = false
+Calc.expr = ""
+Calc.charLimit = 21
+Calc.pointer = 1
+Calc.cursorPos = 1
+Calc.result = "0"
+Calc.restart = false -- If '=' was pressed before, erase old expression
+Calc.basicKeys = {
+	{ "7", "8", "9", "(", ")" },
+	{ "4", "5", "6", "*", "/" },
+	{ "1", "2", "3", "+", "-" },
+	{ "0", ".", "ANS", "^", "=" }
+}
+Calc.navKeys = {
+	{ "FN", "BK", "<-", "->", "AC" }
+}
+Calc.sciKeys = {
+	{ "PI", "sin", "cos", "tan" },
+	{ "e^x", "EXP", "n!", "log" }
+}
+Calc.altSciKeys = {
+	{ "DEG", "asin", "acos", "atan" },
+	{ "ln", "sinh", "cosh", "tanh" }
+}
+
+-- Avoid placing the cursor in the middle of
+-- a function or variable name
+function Calc:incrementCursor()
+	local right = self.expr:sub(self.cursorPos, #self.expr)
+	local amount = 0
+	if #right > 0 then
+		local match =
+			right:match("^%a%w*%(") or
+			right:match("^%a%w*")
+			
+		amount = match and #match or 1
+		self.cursorPos = self.cursorPos + amount
+		if self.cursorPos - self.pointer >
+			self.charLimit then
+			self.pointer = self.pointer + self.charLimit
+		end
+	end
+	self.restart = false
+	return amount
+end
+
+function Calc:decrementCursor()
+	local left = self.expr:sub(1, self.cursorPos-1)
+	
+	local amount = 0
+	if #left > 0 then
+		local match = 
+			left:match("%a%w*%($") or
+			left:match("%a%w*$")
+	
+		amount = match and #match or 1
+		self.cursorPos = self.cursorPos - amount
+		if self.cursorPos <= self.pointer and
+			self.pointer > self.charLimit then
+			self.pointer = self.pointer - self.charLimit
+		end
+	end
+	self.restart = false
+	return amount
+end
+
+function Calc:resetCursors()
+	self.pointer = 1
+	self.cursorPos = 1
+end
+
+function Calc:insertStr(str)
+	if self.cursorPos > 0 then
+		local left = self.expr:sub(1, self.cursorPos-1)
+		local right = self.expr:sub(self.cursorPos, #self.expr)
+		self.expr = left..str..right
+	else
+		self.expr = str..self.expr
+	end
+	self:incrementCursor()
+end
+
+function Calc:removeStr()
+	local last = self.cursorPos
+	local amount = self:decrementCursor()
+	if amount > 0 then
+		local left = self.expr:sub(1, last-amount-1)
+		local right = self.expr:sub(last, #self.expr)
+		self.expr = left..right
+	end
+end
+
+function Calc:typeBasic(row, col)
+	local button = self.basicKeys[row][col]
+	if button == "ANS" then
+		if self.result then
+			self.expr = self.expr..(tonumber(self.result) or 0)
+			local amount = 0
+			repeat amount = self:incrementCursor() until amount == 0
+		end
+		self.restart = false
+	elseif button == "=" then
+		local expr = replace_vars(self.expr)
+		local res = Parse(expr)
+		if res then
+			self.result = res..""
+		else
+			self.result = "Invalid expression"
+		end
+		self.restart = true
+	else
+		if Calc.restart then
+			local followThrough = isOp(button) and self.result ~= "0"
+			self.expr =  ""..(followThrough and tonumber(self.result) or "")
+			self.restart = false
+			self.cursorPos = #self.expr+1
+			self.pointer = 1
+		end
+		self:insertStr(self.basicKeys[row][col])
+	end
+end
+
+function Calc:typeNav(row, col)
+	if self.navKeys[row][col] == "AC" then
+		self.expr = ""
+		self.result = "0"
+		self.pointer = 1
+		self.cursorPos = 1
+	elseif self.navKeys[row][col] == "->" then
+		self:incrementCursor()
+	elseif self.navKeys[row][col] == "<-" then
+		self:decrementCursor()
+	elseif self.navKeys[row][col] == "BK" then
+		self:removeStr()
+	elseif self.navKeys[row][col] == "FN" then
+		Calc.alternate = not Calc.alternate
+		Gui = nil
+		Gui = CreateGui()
+	end
+end
+
+function Calc:typeSci(row, col)
+	if Calc.restart then
+		self.expr = ""
+		self.restart = false
+		self:resetCursors()
+	end
+	if self.alternate then
+		self:handleAltSci(row, col)
+	else
+		self:handleSci(row, col)
+	end
+end
+
+function Calc:handleSci(row, col)
+	local button = self.sciKeys[row][col]
+	if button == "e^x" then
+		self:insertStr("exp(")
+	elseif button == "EXP" then
+		if self.expr:match("%d+$") then
+			self.expr = self.expr.."*"
+		end
+		self.expr = self.expr.."10^"
+		local match = self.expr:match("%*?10^$")
+		for i=1,#match do
+			self:incrementCursor()
+		end
+	elseif button == "n!" then
+		self:insertStr("fact(")
+	elseif KNOWN_VARS[button] then
+		self:insertStr(button)
+	else
+		self:insertStr(button.."(")
+	end
+end
+
+function Calc:handleAltSci(row, col)
+	local button = self.altSciKeys[row][col]
+	if button == "DEG" then
+		local number = tonumber(self.result)
+		if number then
+			self.result = math.deg(number)..""
+		end
+	else
+		self:insertStr(button.."(")
+	end
+end
+:: gui.lua
+--[[pod_format="raw",created="2025-08-04 22:12:17",modified="2025-08-23 02:20:50",revision=360]]
+include "calc.lua"
+
+local function drawButtonReleased(self, label)
+	local size = #label * 4
+	rect(0, 0, self.width-1, self.height-1, 0)
+	rect(1, 1, self.width-2, self.height-2, 0)
+	if label == "FN" then
+		rectfill(2, 2, self.width-3, self.height-3, 9)
+	end
+	line(1, 1, self.width - 2, 1, 7)
+	line(1, 1, 1, self.height - 2, 7)
+	print(
+		label,
+		self.width / 2 - size / 2,
+		self.height / 2 - 3,
+		7
+	)			
+end
+
+local function drawButtonClicked(self, label)
+	local size = #label * 4
+	rect(0, 0, self.width-1, self.height-1, 0)
+	rectfill(1, 1, self.width-2, self.height-2, 6)
+	print(
+		label,
+		self.width / 2 - size / 2,
+		self.height / 2 - 3,
+		7
+	)			
+end
+
+function buildKeyboard(keyboard, keys, callback)
+	local rows = #keys
+	local cols = #keys[1]
+	for row=0, rows-1 do
+		for col = 0, cols-1 do
+			local label = keys[row+1][col+1]
+			local button = keyboard:attach{
+				x = col * keyboard.width / cols + 2,
+				y = row * keyboard.height / rows + 2,
+				width = keyboard.width / cols - 4,
+				height = keyboard.height / rows - 4,
+				draw = function(self)
+					if self.clicked then
+						drawButtonClicked(self, label)
+					else
+						drawButtonReleased(self, label)
+					end
+				end,
+				click = function(self) self.clicked = true end,
+				release = function(self) self.clicked = false end,
+				tap = function(self)
+					callback(Calc, row+1, col+1)
+				end
+			}
+		end
+	end
+end
+
+local function findKeyIndex(targetKey, keyMap)
+	for rowIndex, rowVal in ipairs(keyMap) do
+		for colIndex, colVal in ipairs(rowVal) do
+			if ord(targetKey) == ord(keyMap[rowIndex][colIndex]) then
+				return rowIndex, colIndex
+			end
+		end
+	end
+	return nil, nil
+end
+
+function CreateGui()
+	local Gui = create_gui()
+	Gui.width = 128
+	Gui.height = 200
+	
+	local mainFrame = Gui:attach{
+		x = 0, y = 0,
+		width = Gui.width, height = Gui.height,
+		draw = function(self)
+			rectfill(0, 0, self.width, self.height, 13)
+		end
+	}
+	
+	local screen = mainFrame:attach{
+		x = 6, y = 2,
+		width = mainFrame.width*0.91,
+		height = mainFrame.height*0.3,
+		draw = function(self)
+			rectfill(0, 0, self.width, self.height, 28)
+			line(0, 0, self.width, 0, 0)
+			line(0, 1, self.width, 1, 0)
+			line(0, 0, 0, self.height, 0)
+			line(1, 0, 1, self.height, 0)
+			line(0, self.height-1, self.width, self.height-1, 6)
+			line(2, self.height-2, self.width, self.height-2, 6)
+			line(self.width-1, 0, self.width-1, self.height, 6)
+			line(self.width-2, 1, self.width-2, self.height-3, 6)
+			if #Calc.expr > 0 then
+				local str = Calc.expr:sub(
+					Calc.pointer,
+					Calc.pointer + Calc.charLimit)
+				local cursorPos = Calc.cursorPos - Calc.pointer
+				print(str, 5, 15, 0)
+				line(cursorPos*5+5, 22, cursorPos*5+9, 22)
+			end
+			
+			if #Calc.result > 0 then
+				local size = #Calc.result * 5
+				print(Calc.result, self.width - size - 10, 48, 0)
+			end
+		end
+	}
+	
+	local keyboard = mainFrame:attach{
+		x = 4, y = 62,
+		width = mainFrame.width*0.94,
+		height = mainFrame.height*0.67,
+		update = function()
+			local c = readtext(true)
+			if c then
+				local row, col = findKeyIndex(c, Calc.basicKeys)
+				if row and col then
+					Calc:typeBasic(row, col) 
+				end
+			elseif keyp("backspace") then
+				Calc:removeStr()
+			elseif keyp("enter") then
+				local row, col = findKeyIndex("=", Calc.basicKeys)
+				if row and col then
+					Calc:typeBasic(row, col) 
+				end
+			elseif keyp("ctrl") then
+				local row, col = findKeyIndex("FN", Calc.navKeys)
+				if row and col then
+					Calc:typeNav(row, col) 
+				end
+			elseif keyp("left") then
+				local row, col = findKeyIndex("<-", Calc.navKeys)
+				if row and col then
+					Calc:typeNav(row, col) 
+				end	
+			elseif keyp("right") then
+				local row, col = findKeyIndex("->", Calc.navKeys)
+				if row and col then
+					Calc:typeNav(row, col) 
+				end
+			elseif keyp("A") then
+				local row, col = findKeyIndex("ANS", Calc.basicKeys)
+				if row and col then
+					Calc:typeBasic(row, col) 
+				end
+			end
+		end
+	}
+	
+	local navKeys = keyboard:attach{
+		x = 0, y = 0,
+		width = keyboard.width, height = keyboard.height/7
+	}
+	
+	local sciKeys = keyboard:attach{
+		x = 0, y = navKeys.height + navKeys.y,
+		width = keyboard.width, height = keyboard.height*2/7
+	}
+	
+	local basicKeys = keyboard:attach{
+		x = 0, y = sciKeys.y + sciKeys.height,
+		width = keyboard.width, height = keyboard.height*4/7,
+	}
+	
+	buildKeyboard(basicKeys, Calc.basicKeys, Calc.typeBasic)
+	buildKeyboard(navKeys, Calc.navKeys, Calc.typeNav)
+	if Calc.alternate then
+		buildKeyboard(sciKeys, Calc.altSciKeys, Calc.typeSci)
+	else
+		buildKeyboard(sciKeys, Calc.sciKeys, Calc.typeSci)
+	end
+	return Gui
+end
+:: label.qoi
+b64$cW9pZgAAAeAAAAEOBAH_vZrf-f39-f39-f39-f39-f394f5lRojEB-39-f39-cA6wAfAOsAH
+xzrBB8A6wQfLOsEHyDrEB8b_JGOwxgfJOgc6B806xQf9-f39-fw6wAfCOsAHxjrBB8A6wQfGOsIH
+OsEHyDoHwjoHxiDGB8o6B9I6BzoH-f39-f38OsAHwjrAB8Y6wQfAOsEHxjrCBzrBB8g6B8I6B8Yg
+xgfGOscHyjrBBzrBB-39-f39-DrAB8I6wAfGOsYHxjrCB8w6B8I6B8YgxgfGOsAHwzrAB8o6BzoH
+-f39-f39wjrAB8I6wAfGOgc6wgc6B8Y6xQfJOgfAOsEH1jrAB8M6wAfKOsUH-f39-f38OsAHwjrA
+B8Y6BzrCBzoHxjrFB8c6wQfAOsEHxiDGB8Y6wAfDOsAHyzrEB-39-f39-TrAB8A6wAfHOsYHxjrF
+B8c6wQfLIMAHwiDAB8Y6xwf9-f39-f39-f39-f39-f3j-gAAAP39-f39-f39-f39-f39-f39-f39
+-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39-f39
+-f39-f39-f39-f39-f39-f39-f39-f39zf7-8ejKNf39-f39-f3fP8w1-fwH-f3ANf396-4dK1PH
+NeQ-zDX9_wf9-cI1-f3oKME1xSjBNeI-zDX9_wfwKMAHxigHwSgH-TX9-eYowTXuP8w1-fsHxDrF
+B_IoB8AoB8koB-Y6wQfCNf394SjENfA-zDX9_wfvKAfDKMEHKMAHwCjCBygHKMAHwCjAB8AowQfl
+OgfBOgfBNf393ijCNfU-zDX9_wfEOsUH4yjAB8AoB8MoB8EoB8EowAfBKAfAKAcoB8AoB_Q6B8E6
+B8E1-f3dKMA1_D-MNf37B-IoBygHwygHwSgHwSgHwigHwCgHKAfAKAfkOgfBOgfBNf393CjANfkH
+P8oHNf37B8Q6xQfiKAfAKAcoB8MoB8EoB8EoB8IoB8AoBygHwCgH5TrBB8I1-f3VKMY1_gfMNf37
+B-AowAfBKMEHKMEHwSjABygHwyjAB8AoB8AoB_w1-f3TKME1-cMHwCDAB8g1-fsH-f3CNf390ijA
+Nf3GB8o1-fwH-f3CNf390ig1-f39-f39-eoowDX9-f3T-oN2nP39wjX9-dAowDX9-f3UEP39wjX9
+-dAoNf39-dUQxDX98-7Cw8cQxDX9-c8owDX9-f3VEMQ1-fI7wBDENf39zyg1-f391hDENcD_ZN-2
+-fA7wBDENf39zyg19D-xNf3pEMQ1wDb98DvAEMQ1-f3PKDXzP-M1-egQxDXANv3wO8AQxDX9-c0o
+wTXzP-M1-egQxDXANv3wO8AQxDX9-cwowDX1P-M1-egQxDXANv3wO8AQxDX9-csowDX2P8cQP8UQ
+P84QwD-PNf3oEMQ1wDb98DvAEMQ1-f3JKME19z-HED-XED-PNf3oEMQ1wDb98DvAEMQ1-f3IKMA1
+_T-FEME-ED8QwD8QwD-AED-AED-AEMA-xRA-wRDAP8EQwT-ENf3oEMQ1wDb98DvAEMQ1-f3HKMA1
+_j-EED-AED8QwD-CED-AED-AED8QP8AQP8QQP8AQP8AQPxA-xzX96BDENcA2-fA7wBDENf39xyg1
+_z-EED-AED8QP8MQP8AQP8AQPxDCP8QQP8AQP8AQPxA-xzX96BDENcA2-fA7wBDENf39xyg1_z-E
+ED-AED8QP8MQP8AQPxA-wBA-xxA-wBA-wBA-ED-HNf3oEMQ1wDb98DvAEMQ1-f3HKDX7P8UQwT8Q
+P8IQwT8QwD-CEME-wBA-wRDAP8AQwD-BEME-xDX96BDENcA2-fA7wBDENf39xyg1_z-zNf3oEMQ1
+wDb98DvAEMQ1-f3HKMA1_j-zNf3oEMQ1wDbINTbHNTbANcE2wDXBNsY1wDbBNTb9wzvAEMQ1-f3I
+KMA1_T-zNf3oEMQ1wDbRNTbBNTbANTbANTbDNTbANTbANTbBNTb9wjvAEMQ1-f3JKMA1_T-xNf3p
+EMQ1wDbCNcE2wDXANsA1wTbBNTbBNTbANTbANTbDNTbDNTbBNTb9wjvAEMQ1-f3JKDX9-f3cEMQ1
+wDbBNTbENTbANTbANTbANTbBNcE2wTU2wjU2wzU2wjU2-cI7wBDENf39ySjANf39-dsQxDXANsI1
+wDbCNTbANTbANTbANTbBNTbDNTbCNTbCNTbDNTb9wjvAEMQ1-f3KKMI1-f392BDENcA2xDU2wTU2
+wDU2wDU2wDU2wTU2wzU2wTU2wjU2xDU2-cI7wBDENf39yig1-f392xDENcA2wTXBNsE1wTY1NsA1
+NsA1NsE1NsI1wTbANTbCNcI2wTU2-cI7wBDENf31KMU1ySjANf39-dsQxDXANtI1NtU1NsE1wzb5
+O8AQxDX98yjBNcMowDXIKDX9-f3cEMQ1wDb98DvAEMQ1-fEowTXGKDXIKMA1-f392xDENcA2-fA7
+wBDENf3wKMA1yCjANcgoNf39-dsQxDXANv3wO8AQxDX97yjANcooNcgoNf39-dsQxDXANv3wO8AQ
+xDX97yg1yijANccowDX9-f3bEMQ1wDb98DvAEMQ1-e4owDXLKME1xSg1-f393BDENcA2-fA7wBDE
+Nf3uKDXOKDXFKDX9-f3cEMQ1wDb98DvAEMQ1-e0owTXNKMA1wyjANf39-dwQxDXANv3wO8AQxDX9
+7CjANdAoNcMoNf39-d0QxDXANv3wO8AQxDXvKMU1wCjCNewoNdEowDXBKMA1-f393RDENcA2-fA7
+wBDENe0owTXBKDUowjXAKDXsKDXSKMM1-f393hDENcA2-fA7wBDENewowDXDKDXAKDXCKDXsKMA1
+-eoHyTX9-RDENcA2-fA7wBDENewoNcsowTXsKME1-ec-NQfJNf38EMQ1wDb98DvAEMQ16yjANcso
+NSg17Sg1-eoHwD-EB8E1-fwQxDXANv3wO8AQxDXpKME1zijANesowDX96QfBP8UHwDX9-BDENcA2
+-fA7wBDENegowDUoNc8oNesoNf3pPzUHxD8HPwfANf38EMQ1wDb98DvAEMQ16Cg10ig16yg1-esH
+wD-BBz-BB8A1-fwQxDXANv3wO8AQxDXnKMA10ijANcIowzXhKDX96gfBPwc-B8Q1-fwQxDXANv3w
+O8AQxDXnKDXUKDXAKME1wSjANd4owjX96D81B8A-xQfANf38EMQ1wDb98DvAEMQ15yg11CjCNcQo
+wDXWKMI1wCjANf3tB8E-xAfANf38EMQ1wDb98DvAEMQ15yg10yjANcgoNdUowDXAKMI1-e0HyjX9
+-BDENcA2-fA7wBDENecowDXSKDXIKMA11Sg1-fM-NQfINf39EMQ1wDb98DvAEMQ1yCjFNdcoNd0o
+wDXVKDX9-cE-Nf38EMQ1wDb98DvAEMQ1wyjENcEowzXVKDXeKDXVKMA1-fQ-yAc1-fwQxDXANv3w
+O8AQxDUowzXHKMM1xyjDNcUowDXeKMA10yjANf31B8g1-f0QxDXANv3wO8AQxDUoNcsoxDXGKDXB
+KMM1wSg14Cg10yg1-f39-cMQxDXANv3bNTbGNcA2yDvAEMQ1xijMNcUowTXDKME1KDXgKDXNKME1
+wCjANf39-f3DEMQ1wDb92jXANsU1NsA1Nsc7wBDENcEo0jXFKDXGKME14Cg1zCjANSjCNf39-f3E
+EMQ1wDb92zU2xTU2NcA2xzvAEMQ1KNU1KMA1wCjANcUowDXiKDXMKDXBKDX9-f39xhDENcA2-ds1
+NsU1wDY1Nsc7wBDENSjVNcAowjXGKDXjKME1yig1-f39-coQxDXANv3bNTbFNTbANTbHO8AQxDUo
+1jXVKME12SjBNcgoNf3kP-k1-eUQxDXANv3bNTbFNTbANTbHO8AQxDUo1jXVKDUowDXaKMM1xCg1
+-eM-_zX95BDENcA2-do1wTbANTbCNcA2yDvAEMQ1KNY10ijCNcAowDXdKDXEKDX94z-7Nf3kEMQ1
+wDb98DvAEMQ1KNY1zSjENSg1wig13CjANcMowDX94z-7Nf3kEMQ1wDb98DvAEMQ1KNY1zCjANcEo
+wDXDKMA13CjANcAowjX95D-WED-PED-HED-GNf3kEMQ1wDb98DvAEMQ1KNY1zCg1wyg1wijANd4o
+wjX95z-WED-PED-HED-GNf3kEMQ1wDv98hDENSjVNcoowjXJKDXAKME1-f3IP8QQPxDAP8AQwD-B
+EMA-wRDBPxDAPxA-wRDAP8QQwj8QP8AQPxDCP8Q1-eQQxDv99BDENSjRNdEowDXIKMI1KDX9-cg-
+xBDAP8EQP8AQP8IQPxA-wBA-ED8QPxA-ED-AED-EED-BED-AED-AED-GNf3kEP39wjUozDXnKME1
+-f3GP8QQP8IQwj-AEME-ED-AED8QPxA-ED8Qwj-EED-CEMA-wRA-xjX95BD9-cI1KMc17ijBNf39
+xD-EED-CED-CED-AED8QP8AQPxA-wRA-ED-HED-BED-AED-AED-GNf3kEMQ10hDCNdIQwjXSEMI1
+0hDCNdIQxDUowjXGKDXqKDXeKDX94z-EED-DEME-wBDBP8AQwT8QP8EQP8AQwT-AED-CEMA-ED-A
+ED-BEMA-xDX95BDENT-QNRDCNT-QNRDCNT-QNRDCNT-QNRDCNT-QNRDENcsoNfQoxzXEKMc1-eM-
+_zX95BDENT-_-6MAzjXAEMI1PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQxDXLKMA17ijE
+NcQoxzXDKMA1-eQ-_zX95BDENT8hzjXAEMI1PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQ
+xDXMKDXrKMI11ijANf3lP-s1-eQQxDU-IcI-wiE-IcA-IcE1wBDCNT8Qwj-BEMA-EMA-EME1wBDC
+NT8QzjXAEMI1PxDONcAQwjU-EMM-wBDBP8AQwjXAEMQ1xyjENekowTXYKMA1-ec-_TX95RDENT8h
+wj8hwj-AIT8hwTXAEMI1PxDCPxDAPxA-EMA-EME1wBDCNT8QzjXAEMI1PxDONcAQwjU-EMI-EMA-
+ED8QwD8QwTXAEMQ1xyg17SjANdcowjX9-f39zhDENT8hwj8hwj8hP8AhwTXAEMI1PxDCPxDAPxA-
+ED8QwjXAEMI1PxDEPxDHNcAQwjU-EMg-EMM1wBDCNT8Qwj8QwD8QPxDENcAQxDXGKMA17SjFNc8o
+wjX9-f390RDENT8hwj-BIcA-IcA-IcE1wBDCNT8Qwj-BEMA-wBDDNcAQwjU-EMM-EMg1wBDCNT8Q
+yT8QwjXAEMI1PxDCP8IQPxDENcAQxDXFKMA18ijANcYoyTX9-f391BDENT8hwj8hwj8hwD8hwTXA
+EMI1PxDCPxDAPxA-ED8QwjXAEMI1PxDCPxDCP8IQwTXAEMI1PxDCP8IQwj8QwTXAEMI1PxDCPxDA
+PxA-EMQ1wBDENcUoNfEowTXFKME1-f39-d4QxDU-IcI-IcI-IcA-IcE1wBDCNT8Qwj8QwD8QPxDA
+PxDBNcAQwjU-EMM-EMg1wBDCNT8QyT8QwjXAEMI1PxDCPxDAPxA-EMA-EME1wBDENcUoNe8owTXF
+KME1-f39-eAQxDU-IcI-IcI-IcA-IcE1wBDCNT8Qwj-BEMA-EMA-EME1wBDCNT8QxD8QxzXAEMI1
+PxDIPxDDNcAQwjU-EMI-EMA-EMA-wBDCNcAQxDXEKMA17SjBNcQowjX9-f394hDENT8hzjXAEMI1
+PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQxDUoxDXsKME1wyjCNf39-f3hKME1EMQ1PyHO
+NcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQwjU-EM41wBDENSg17SjDNcEowzX9-f393yjENcEQ
+xDU-NdAQwjU-NdAQwjU-NdAQwjU-NdAQwjU-NdAQxDXsKMI1wSjDNf39-f3iKMA1xCg1EMQ10hDC
+NdIQwjXSEMI10hDCNdIQxDXpKMI1wCjDNf39-f3lKMA1wCjENRD9-cI16SjFNf39-f3oKMA1wCjF
+NRD9-cI1-f39-f3cKMk1EP39wjX9-f39-d4oxzUQ-f3CNf39-f394SjENRDENdgQwjXYEMI12BDC
+NdgQxDX9-f39-eQowTUQxDU-1jUQwjU-1jUQwjU-1jUQwjU-1jUQxDX9-f39-egQxDU-ENQ1wBDC
+NT8Q1DXAEMI1PxDUNcAQwjU-ENQ1wBDENf39-f396BDENT8Q1DXAEMI1PxDUNcAQwjU-ENQ1wBDC
+NT8Q1DXAEMQ1KMA1-f39-f3lEMQ1PxDDP8EQwD-CEMA-wRDBNcAQwjU-EM0-EMQ1wBDCNT8Q1DXA
+EMI1PxDHPxDKNcAQxDXAKME1-f39-f3jEMQ1PxDDPxDAPxA-EMI-EMQ1wBDCNT8Q1DXAEMI1PxDU
+NcAQwjU-EMc-EMo1wBDENcIoNf39-f394xDENT8Qwz8QwD8QPxDCPxDENcAQwjU-EMI-wBDBP8EQ
+wD-AEMA-wRA1wBDCNT8Qwj-AEME-wRDAP8AQwT-BNcAQwjU-EMI-wBDAP8IQwD-AEMA-wRA1wBDE
+NcIowDX9-f39-eIQxDU-EMM-EMA-ED-BEMA-ED-AEME1wBDCNT8QxD8QPxDEPxDAPxDAPzXAEMI1
+PxDEPxA-EMI-EMA-ED8QwTXAEMI1PxDEPxDAPxDEPxA-EMA-NcAQxDXDKDX9-f39-eIQxDU-EMM-
+EMA-ED8Qwj8QwD8QwTXAEMI1PxDCP8EQwD-AEMI-EMA-EMA-NcAQwjU-EMI-wRA-EMI-EMA-EMA-
+wBA1wBDCNT8Qwj-BEMA-EMI-wRA-EMA-NcAQxDUoNcAowDX9-f39-eIQxDU-EMM-EMA-ED8Qwj8Q
+wD8QwTXAEMI1PxDBPxDAPxDCPxDBPxDAPxDAPzXAEMI1PxDBPxDAPxA-EMI-EMA-EMI-NcAQwjU-
+EME-EMA-EMA-EME-EMA-ED8QwD81wBDENSjCNf39-f394xDENT8Qwz-BEMA-whDAP8EQwTXAEMI1
+PxDCP8EQP8EQwT-BED8QwD81wBDCNT8Qwj-BEMA-wRDAP8AQwD-BEDXAEMI1PxDCP8EQwT-AEMA-
+wRA-EMA-NcAQxDX9-f39-egQxDU-ENQ1wBDCNT8Q1DXAEMI1PxDUNcAQwjU-ENQ1wBDENf39-f39
+wCjDNeEQxDU-ENQ1wBDCNT8Q1DXAEMI1PxDUNcAQwjU-ENQ1wBDENf39-f39KMA1wSjANeAQxDU-
+NdYQwjU-NdYQwjU-NdYQwjU-NdYQxDX9-f39_yjBNcMoNeAQxDXYEMI12BDCNdgQwjXYEMQ1-f39
+-fkowTXFKDXgEP39wjX9-f399yjBNccoNeAQ-f3CNf39KME1-f3yKMA1yCjANeAQ-f3CNf38KMA1
+KMA1-f3vKME1yCjANeEQ-f3CNf36KME1wSjANcAowTX9-ekoNcsowjXeEMQ12BDCNdgQwjXYEMI1
+2BDENc4oyDX93CjDNSg1wijCNeoowDX98ijGNSg1zijANd0QxDU-1jUQwjU-1jUQwjU-1jUQwjU-
+1jUQxDXHKMY1xijBNf3UKMU19yjANf3yKMA1xCjBNc8oNd0QxDU-ENQ1wBDCNT8Q1DXAEMI1PxDU
+NcAQwjU-ENQ1wBDENcAoxjXPKMA1-c8owzX7KME1-fEowTXYKME13BDENT8Q1DXAEMI1PxDUNcAQ
+wjU-ENQ1wBDCNT8Q1DXAEMQ1KMA1yyjINcAoNf3NKME1xSjDNfIowDX98ijANdooNSjBNdoQxDU-
+EMY-wBDKNcAQwjU-EMg-EMU-EME1wBDCNT8Q0D8QwTXAEMI1PxDCPxDLPxDBNcAQxDXGKNQ13yjC
+NeEowzXGKMA19ig1-fIowDXfKMA12RDENT8Qxz8QyjXAEMI1PxDQPxDBNcAQwjU-ENA-EME1wBDC
+NT8Qwj8Qyz8QwTXAEMQ1KNw13CjBNcAowDXLKMM1yijDNcgowTX2KMA1-fEowDXhKME11xDENT8Q
+xz8QwD-BEMU1wBDCNT8Qwj-BEMA-wBDAP8EQwD-BEDXAEMI1PxDCP8EQwD-AEME-wRA-wRA1wBDC
+NT8QwT-CEMA-wBDAP8EQwD-BEDXAEMQ1KNw12yjANcMoNccowzXBKMw1ySjCNfcowDX98SjANeQo
+NdcQxDU-EMc-EMA-EMA-EMQ1wBDCNT8QwT8QxD8QwD8QwD8QPxDAPzXAEMI1PxDBPxDCPxDAPxA-
+EMI-EMA-NcAQwjU-EMI-EMQ-ED8QwD8QPxDAPzXAEMQ1KNw12ijANcQoNcUowTX93Sg1-fIoNeUo
+NdcQxDU-EMc-EMA-EMA-EMQ1wBDCNT8Qwj-AEMI-EMA-EMA-ED8QwD81wBDCNT8QwT8Qwj8QwD8Q
+wD-AEMA-EMA-NcAQwjU-EMI-EMI-wRA-EMA-ED8QwD81wBDENSjbNdsoNcUowDXBKMI13Sg1-CjA
+Nf3yKDXlKDXXEMQ1PxDHPxDAPxDAPxDENcAQwjU-EMQ-EME-EMA-EMA-ED8QwD81wBDCNT8QwT8Q
+wj8QwD8Qwj8QPxDAPzXAEMI1PxDCPxDBPxDAPxA-EMA-ED8QwD81wBDENSjaNdsowDXGKMM12yjE
+NfsowDX98yjANeQoNc8oxTUQxDU-EMc-wBA-EMA-EMQ1wBDCNT8QwT-BEME-wRA-EMA-ED8QwD81
+wBDCNT8Qwj-BEMA-wBDAP8EQwD8QwD81wBDCNT8Qwz-AEMA-wRA-EMA-ED8QwD81wBDENSjYNd0o
+NeMoNSjDNf3CKDX99Sg12ijBNcQowDXPKMU1EMQ1PxDUNcAQwjU-ENQ1wBDCNT8Q1DXAEMI1PxDU
+NcAQxDUo0DXlKDXhKME1-ccowDX98yjBNdgowTUoxjXPKMY1EMQ1PxDUNcAQwjU-ENQ1wBDCNT8Q
+1DXAEMI1PxDUNcAQxDUoxDXxKMA14Sg1-ccowDX98yjBNdooNdkoxjUQxDU-NdYQwjU-NdYQwjU-
+NdYQwjU-NdYQxDXuKME1xSjANd8owTX9xyg1-fQoNdwoNeIQxDXYEMI12BDCNdgQwjXYEMQ17CjB
+NSg1wSjDNdwowzX9yCjANf3zKMA13CjBNeAQ-f3CNewoNcEowzXfKMA16SjKNdIowDX99Cg13yg1
+4BD9-cI17CjANeMowjXoKME1yCjANdAowDX99CjANd8oNeAQ-f3CNe0oNdAowTUowTXHKMI16ijA
+NcsowTXOKDX99CjANeAoNeAQ-f3CNewowDXWKDXBKMA18CjBNc4oxDXHKME16ijENf3CKDXgKMA1
+4BDENdIQwjXSEMI10hDCNdIQwjXSEMQ16ijBNdcowzXvKME11SjENcEowDXrKMA1wijANf0owTXg
+KDXhEMQ1P9A1EMI1P9A1EMI1P9A1EMI1P9A1EMI1P9A1EMQ16SjANc4oxTX3KMA13CjDNewoNcQo
+NfwowDUoNeAoNeEQxDU-EM41wBDCNT8QzjXAEMI1PxDONcAQwjU-EM41wBDCNT8QzjXAEMQ16Sg1
+1Sg19ijANf3SKDXDKMU19yg14yg1KMY12BDENT8QzjXAEMI1PxDONcAQwjU-EM41wBDCNT8QzjXA
+EMI1PxDONcAQxDXjKMU10ijCNe4oxzX9xCjFNSjDNSjANcMoNcMoNfcoNeMowTXBKDXAKDXYEMQ1
+PxDEP8IQxDXAEMI1PxDFP8AQxTXAEMI1PxDFP8AQxTXAEMI1PxDGPxDFNcAQwjU-EMU-EMY1wBDE
+Nd0oxTXSKMU17yjBNf3JKMI1wyjBNcEowTXJKME19ig17Cg12BDENT8Qxz8QxDXAEMI1PxDEPxDA
+PxDENcAQwjU-EMQ-EMA-EMQ1wBDCNT8QxT8QxjXAEMI1PxDGPxDFNcAQxDXZKMM1yyjMNfMowTX9
+yCjCNdwowTX0KDXrKMA1wyjBNdAQxDU-EMc-EMQ1wBDCNT8QxD8QwD8QxDXAEMI1PxDEPxDAPxDE
+NcAQwjU-EMU-EMY1wBDCNT8Qxj8QxTXAEMQ11ijCNcsowzX9wSjANf3JKMA14SjANfMoNesoNcMo
+wDUoNdAQxDU-EMY-EMU1wBDCNT8QxT-AEMU1wBDCNT8QxT-BEMQ1wBDCNT8QxT8QxjXAEMI1PxDG
+PxDFNcAQxDXTKMI1yijDNf3EKMA1-ckowDXjKMA18ijANekowDXCKMA1wCg10BDENT8QxT8QxjXA
+EMI1PxDEPxDAPxDENcAQwjU-EMc-EMQ1wBDCNT8QxT8QxjXAEMI1PxDGPxDFNcAQxDXPKMM1xyjF
+Nf3HKMA1-cooNeUoNfMoNegowDXDKDXBKDXQEMQ1PxDFPxDGNcAQwjU-EMQ-EMA-EMQ1wBDCNT8Q
+xz8QxDXAEMI1PxDFPxDGNcAQwjU-EMY-EMU1wBDENcwowjXAKMo1-cwowDX9yijBNeQoNfMowDXo
+KDXBKME1wSg10BDENT8QxT8QxjXAEMI1PxDFP8AQxTXAEMI1PxDFP8AQxTXAEMI1PxDFPxDGNcAQ
+wjU-EMY-EMU1wBDENckoyDX91ijANf3GKME1KMA15ig19CjBNeYoNcAowDXDKMA1zxDENT8QzjXA
+EMI1PxDONcAQwjU-EM41wBDCNT8Qxj8QxTXAEMI1PxDFPxDGNcAQxDX96yg1-ckowTXjKMA1KMI1
+9CjCNeMowjXFKME1zRDENT8QzjXAEMI1PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQxDX9
+6ijANf3yKME1wCjANfUoNfYowTXGEMQ1PzXQEMI1PzXQEMI1PzXQEMI1PzXQEMI1PzXQEMQ1-eoo
+Nf35KDX1KDX0KME1KMA1xRDENdIQwjXSEMI10hDCNdIQwjXSEMQ1-eooNf34KME19Cg18ijBNSg1
+wCg1xRD9-cI1-eoowDX9_SjDNfAoNfAowTXEKDXFEP39wjX96yg1-f0owTXuKDXuKME1xijANcQQ
+-f3CNf3rKDX9-cEowDXtKDXtKMA1ySjBNcIQ-f3CNf3qKMA1-f3CKDXsKMA17CjANcwowjUQxDXS
+EMI10hDCNdIQwjXSEMI10hDENf3qKDX9-cMowDXnKMM17CjANdAoNRDENT-QNRDCNT-QNRDCNT-Q
+NRDCNT-QNRDCNT-QNRDENf3pKMA1-f3EKDXmKMA18Cg10xDENT8QzjXAEMI1PxDONcAQwjU-EM41
+wBDCNT8QzjXAEMI1PxDONcAQxDX96Sg1-f3FKDXlKMA18Sg10Sg1EMQ1PxDONcAQwjU-EM41wBDC
+NT8QzjXAEMI1PxDONcAQwjU-EM41wBDENf3pKDX9-cUowDXkKDXuKMQ10Cg1EMQ1PxDGPxDFNcAQ
+wjU-EMQ-whDENcAQwjU-EMU-wBDFNcAQwjU-EM41wBDCNT8QzjXAEMQ1-ekoNf39xig15Cg16SjE
+NcIowDXPKDUQxDU-EMU-wBDFNcAQwjU-EMQ-EMc1wBDCNT8QxD8QxzXAEMI1PxDONcAQwjU-EMY-
+EMU1wBDENf3pKDX9-cYoNeQoNegowDXcEMQ1PxDEPxA-EMU1wBDCNT8QxD8QxzXAEMI1PxDEPxDH
+NcAQwjU-EMQ-ED8QxTXAEMI1PxDGPxDFNcAQxDX96Sg1-f3GKDXkKDXlKMI13RDENT8QxD8QPxDF
+NcAQwjU-EMQ-wRDFNcAQwjU-EMQ-wRDFNcAQwjU-EMU-EMY1wBDCNT8QxT8QxjXAEMQ1-ekoNf39
+xig15Cg14yjBNeAQxDU-EMQ-whDENcAQwjU-EMc-EMQ1wBDCNT8QxD8QwD8QxDXAEMI1PxDEP8EQ
+xTXAEMI1PxDFPxDGNcAQxDX96CjANf39xig15Cg14SjBNeIQxDU-EMY-EMU1wBDCNT8Qxz8QxDXA
+EMI1PxDEPxDAPxDENcAQwjU-EMU-EMY1wBDCNT8QxD8QxzXAEMQ1-ecowDX9ySg1_Sg15Cg12CjC
+NcEowTXkEMQ1PxDGPxDFNcAQwjU-EMQ-wRDFNcAQwjU-EMU-wBDFNcAQwjU-EMQ-ED8QxTXAEMI1
+PxDEPxDHNcAQxDX95ijANf3JKMA1_CjANeMowDXXKMA1wCjDNeYQxDU-EM41wBDCNT8QzjXAEMI1
+PxDONcAQwjU-EM41wBDCNT8QzjXAEMQ1-eUowDX9ySjANfgowDXkKDXXKMA17hDENT8QzjXAEMI1
+PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQxDX95Sg1-cooNfkoNeQowDXXKDXvEMQ1PzXQ
+EMI1PzXQEMI1PzXQEMI1PzXQEMI1PzXQEMQ1-eQowDX9ySjANfkoNeMowDXYKDXvEMQ10hDCNdIQ
+wjXSEMI10hDCNdIQxDX95Cg1-cgowTX6KDXgKMI12Sg17xD9-cI1-eQoNf3HKMA1-CjANdsowzXc
+KDXvEP39wjX94yjANfsowjXDKMA1-cAoNdoowDXbKME1wCg17xD9-cI1-eIowDX1KME1wCjBNcAo
+wDUowjX9wSjANdkoNdwoNSjDNe4Q-f3CNf3iKDXvKMM1KMA1KMI1wyjBNf3FKDXZKDXaKME19BDE
+NdIQwjXSEMI10hDCNdIQwjXSEMQ1-eIoNe0owTXBKME1-dIowDXZKDXaKDX2EMQ1P9A1EMI1P9A1
+EMI1P9A1EMI1P9A1EMI1P9A1EMQ1-eIoNewowDX92ijBNcYowjXMKDXaKDX2EMQ1PxDONcAQwjU-
+EM41wBDCNT8QzjXAEMI1PxDONcAQwjU-EM41wBDENf3iKMA16ijANf3dKMA1xSg1wCjANcsoNdko
+wDX2EMQ1PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQwjU-EM41wBDENf3jKDXqKDX93yjA
+NcMowDXBKMM1xijANdgowDX3EMQ1PxDGPxDFNcAQwjU-EMU-wBDFNcAQwjU-EMU-wBDFNcAQwjU-
+EM41wBDCNT8QzjXAEMQ1-eMowDXoKMA1-eAoNcMoNcYoyDXZKDX4EMQ1PxDFP8AQxTXAEMI1PxDE
+PxDAPxDENcAQwjU-EMQ-EMA-EMQ1wBDCNT8QzjXAEMI1PxDONcAQxDX95Cg16Cg1-eEoNSjDNeso
+NfgQxDU-EMY-EMU1wBDCNT8Qxz8QxDXAEMI1PxDHPxDENcAQwjU-EM41wBDCNT8QzjXAEMQ1-eQo
+NegoNf3hKDXxKDX4EMQ1PxDGPxDFNcAQwjU-EMY-EMU1wBDCNT8QxT-AEMU1wBDCNT8Qxj8QxTXA
+EMI1PxDONcAQxDX95CjANecowDX94Cg18SjANfcQxDU-EMY-EMU1wBDCNT8QxT8QxjXAEMI1PxDH
+PxDENcAQwjU-EMU-wRDENcAQwjU-EMQ-whDENcAQxDX95Sg16CjANf3eKMA18ig19xDENT8Qxj8Q
+xTXAEMI1PxDEPxDHNcAQwjU-EMQ-EMA-EMQ1wBDCNT8Qxj8QxTXAEMI1PxDONcAQxDX95Sg15yjA
+Nf3eKMA18yg19xDENT8QxT-BEMQ1wBDCNT8QxD-CEMQ1wBDCNT8QxT-AEMU1wBDCNT8QzjXAEMI1
+PxDONcAQxDX95Sg15yg1-eAoNfIowDX3EMQ1PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQ
+wjU-EM41wBDENf3lKMA15CjBNf3fKMA17ijDNfgQxDU-EM41wBDCNT8QzjXAEMI1PxDONcAQwjU-
+EM41wBDCNT8QzjXAEMQ1-eYoxTXdKMA1-eEoNe0owTX8EMQ1PzXQEMI1PzXQEMI1PzXQEMI1PzXQ
+EMI1PzXQEMQ1-ewowTXbKDX94SjFNeMoxDUowDX7EMQ10hDCNdIQwjXSEMI10hDCNdIQxDX97ig1
+2SjBNf3gKMA1wyjBNd8owTXBKDX9wRD9-cI1-e4oNdkoNf3rKMA13SjANf3HEP39wjX92ijBNc4o
+wDXZKDX97Cg13Sg1-cgQ-f3CNf3ZKMA1KMI1KMs12ig1-esowDXdKDX9yBD9-cI1-dgowDXDKME1
+5ijANf3rKDXbKMI1-ccQxDXSEMI10hDCNdIQwjXSEMI10hDENf3WKME17ijANeMowTX9xCg12ijA
+Nf3KEMQ1P9A1EMI1P9A1EMI1P9A1EMI1P9A1EMI1P9A1EMQ1-dUowDXvKMA15Cg1-cYowDXZKDX9
+yxDENT8QzjXAEMI1PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQxDX91Sg17yjANeUoNf3H
+KDXZKDX9yxDENT8QzjXAEMI1PxDONcAQwjU-EM41wBDCNT8QzjXAEMI1PxDONcAQxDX91Sg17yg1
+5ig1-ccoNdkoNf3LEMQ1PxDFP8AQxTXAEMI1PxDONcAQwjU-EME-wBDAPxDAPxDAP8AQNcAQwjU-
+EMU-EMY1wBDCNT8QzjXAEMQ1-dUoNe8oNeYoNf3GKMA12SjANf3KEMQ1PxDEPxDAPxDENcAQwjU-
+EM41wBDCNT8QwD8QwD8QP8AQPxA-EMA-NcAQwjU-EMQ-ED8QxTXAEMI1PxDONcAQxDX91Sg17yg1
+5ig1-cMowjXaKDX9yxDENT8QxD8QP8AQxDXAEMI1PxDONcAQwjU-EMA-EMA-ED8QP8AQPxDBNcAQ
+wjU-EM41wBDCNT8QzjXAEMQ1-dUoNe8oNdcoxzXBKMI1-cIowDXcKMA1-csQxDU-EMQ-wBA-EMQ1
+wBDCNT8QzjXAEMI1PxDAP8IQPxDAPxDAP8AQNcAQwjU-EM41wBDCNT8QxD-CEMQ1wBDENeMoxDXn
+KMA17yjANdUowDXFKMA1KMA1-cYoNdgowzX9zBDENT8QxD8QwD8QxDXAEMI1PxDONcAQwjU-EMA-
+EMA-ED8QwD8Qwj81wBDCNT8QzjXAEMI1PxDONcAQxDXiKMA1wijANcEoxTXcKDXxKDXSKMI1xyjB
+Nf3GKMA11CjDNf3QEMQ1PxDEPxDAPxDENcAQwjU-EM41wBDCNT8QwD8QwD8QPxDAPxA-EMA-NcAQ
+wjU-EM41wBDCNT8QxD-CEMQ1wBDENeIoNcQowzXDKMA12yg18Sg10SjANcsowDX9xig10SjDNcAo
+Nf3REMQ1PxDFP8AQxTXAEMI1PxDFPxDGNcAQwjU-EMA-EMA-ED8QwD8QwD-AEDXAEMI1PxDONcAQ
+wjU-EM41wBDENeIoNc8owDXPKME1xSjBNfAoNdAowDX91ig1zyjBNf3YEMQ1PxDONcAQwjU-EM41
+wBDCNT8QzjXAEMI1PxDONcAQwjU-EM41wBDENdkoxTUowDXQKMA1zSjANSjANcQoNfIowTXOKDX9
+1yg1zyg1-doQxDU-EM41wBDCNT8QzjXAEMI1PxDONcAQwjU-EM41wBDCNT8QzjXAEMQ11ijCNcMo
+wTXSKDXMKMA1wSjANcIowDX0KMA1zCjANf3XKDXOKMA1-doQxDU-NdAQwjU-NdAQwjU-NdAQwjU-
+NdAQwjU-NdAQxDXRKMQ1xyg10yjANcsoNcMoNcEowDXzKMI1zCg1-dgowDXNKDX92xDENdIQwjXS
+EMI10hDCNdIQwjXSEMQ1zyjBNcAoNeAowDXIKMI1wijDNfMowDXOKMA1-dkowDUowzXGKDX92xD9
+-cI1zijANeYoNccowDXGKDX1KMA1zyg1-dsowTXBKMA1xSjANf3aEP39wjXNKMA15yjCNcQoNfso
+wzXQKDX94ig1xijANf3ZEP39wjXNKDXoKDXAKMA1wijANfoowDXUKDX94ijCNSjDNf3aEP39wjXM
+KMA17CjCNSg1_yg11Sg1-eMoNSjBNcAoNf3bEP39wjXLKMA18CjBNfsoNdUowDX9-f3JEP39wjXL
+KDXyKDX8KDXWKDX9-f3KEP39wDXMKDX98yg11ig1-f39-f3ZKMA1-fMoNdQowjX9-f39-dcowDX9
+9CjANdAowjXAKDX9-f39-dcoNf32KMA1zyg1-f39-f3cKMA1-fYowTXNKMA1-f39-f3cKDX99yg1
+KDXNKDX9-f39-dwowTX99ig1zSjBNf39-f393Cg1-fcowDXNKDUoNf39-f393Cg1-dwoxzXOKME1
+zSjANf39-f393ijANf3aKMA1xSjCNcoowDXPKDX9-f39-eAoNf3ZKMA1ySjANcgowDXQKDX9-f39
+-d8owDX92Sg1yyjKNf39-f398ijANf3ZKMA1-f39-f39zCjANf3aKDX9-f39-f3MKMA1-doowDX9
+-f39-f3MKDX92CjCNf39-f39-csowTX9ySjCNcgowDX9-f39-f3MKME1-csoNcAoyjX9-f39-f3L
+KME1KMA1-ckowDX9-f39-f3YKMA1wig1-ccowTX9-f39-f3XKME1-csowTX9-f39-f3XKME1-cwo
+wDX9-f39-f3YKMA1-c0owDX9-f39-f3ZKDX9zig1-f39-f392SjANf3NKMA1-f39-f392CjANf3O
+KDX9-f39-f3ZKDX9zyg1-f39-f392CjANf3OKMA1-f39-f392Cg1-c8oNf39-f39-dgowDX9zyjA
+Nf39-f39-dYowDX9zyjANf39-f39-dcoNf3QKDX9-f39-f3YKDX9zyjANf39-f39-dcowDX9zyg1
+-e0AAAAAAAAAAQ==
+:: main.lua
+--[[pod_format="raw",created="2025-08-04 21:55:53",modified="2025-08-23 12:51:42",revision=52]]
+include "gui.lua"
+
+Gui = nil
+function _init()
+	fetch("/system/fonts/lil_mono.font"):poke(0x4000)
+	Gui = CreateGui()
+	window{
+		width=Gui.width,
+		height= Gui.height,
+		resizeable = false,
+		title = "Scitron"
+	}
+end
+
+function _update()
+	Gui:update_all()
+end
+
+function show_cpu_usage()
+   print(string.format(
+		"%.2f", stat(1)*100), Gui.width - 10,
+		Gui.height - 10, 11
+	)
+end
+
+function _draw()
+	cls(7)
+	Gui:draw_all()
+	--show_cpu_usage()
+end
+:: mathematic.lua
+--[[pod_format="raw",created="2025-08-15 12:32:38",modified="2025-08-23 17:23:09",revision=23]]
+local function round(val, cnt)
+	local mult = 10^(cnt or 0)
+	return math.floor(val * mult + 0.5) / mult
+end
+
+MIN_ZERO = 2^-1074
+
+function Sin(x)
+	local result = math.sin(x)
+	return round(result, PRECISION)
+end
+
+function Cos(x)
+	local result = math.cos(x)
+	return round(result, PRECISION)
+end
+
+function Tan(x)
+	local result = math.tan(x)
+	return round(result, PRECISION)
+end
+
+function Asin(x)
+	local result = math.asin(x)
+	return round(result, PRECISION)
+end
+
+function Acos(x)
+	local result = math.acos(x)
+	return round(result, PRECISION)
+end
+
+function Atan(x)
+	local result = math.atan(x)
+	return round(result, PRECISION)
+end
+
+function Sinh(x)
+	local result = (math.exp(x)-math.exp(-x))/2
+	return round(result, PRECISION)
+end
+
+function Cosh(x)
+	return (math.exp(x)+math.exp(-x))/2
+end
+
+function Tanh(x)
+	local result = Sinh(x)/Cosh(x)
+	return round(result, PRECISION)
+end
+
+function Log10(x)
+	local result = math.log(x, 10)
+	return round(result, PRECISION)
+end
+
+function Ln(x)
+	local result = math.log(x)
+	return round(result, PRECISION)
+end
+
+function Factorial(x)
+	local val = x + 0.0
+	if val == 0.0 then
+		return 1.0
+	else
+		return val*Factorial(val-1)
+	end
+end
+:: parser.lua
+--[[pod_format="raw",created="2025-08-04 21:56:51",modified="2025-08-23 16:44:37",revision=110]]
+include "algorithm.lua"
+include "mathematic.lua"
+
+local KNOWN_FUNCTIONS = {
+    sin = Sin,
+    cos = Cos,
+    tan = Tan,
+    asin = Asin,
+    acos = Acos,
+    atan = Atan,
+    ln = Ln,
+    log = Log10,
+    sqrt = math.sqrt,
+    exp = math.exp,
+    sinh = Sinh,
+    cosh = Cosh,
+    tanh = Tanh,
+    fact = Factorial
+}
+
+local PRECISION = 15
+
+local function copy_table(tb, start, stp)
+    local newTb = {}
+    local final = stp or #tb
+    for i = start, final do
+        table.insert(newTb, tb[i])
+    end
+
+    return newTb
+end
+
+-- Used to split expression by operation
+local function split_op(expr, sep)
+    local subExpr = {}
+    local start = 1
+    while start <= #expr do
+        local stp = expr:find(sep, start, true)
+        if stp then
+            table.insert(subExpr, expr:sub(start, stp-1))
+            start = stp+1
+        elseif start > 1 then
+            table.insert(subExpr, expr:sub(start))
+            break
+        else
+            break
+        end
+    end
+    return subExpr
+end
+
+-- Plus and minus are special cases, since there are numbers like 2e+3 or 1.5e-7.
+-- Should not split expr in the middle of a number.
+local function split_minus_plus(expr, sep)
+    local subExpr = {}
+    local exprCp = expr:sub(1)
+    local remain = ""
+    while #exprCp > 0 do
+        local stp = exprCp:find(sep, 1, true)
+        if stp then
+            local numberStart, numberEnd = exprCp:find("(%d+%.?%d*e%"..sep.."%d+)")
+            -- Found scientific notation
+            if numberStart and
+                numberStart <= stp and
+                numberEnd >= stp then
+                
+                remain = remain..exprCp:sub(1, numberEnd)
+                local rest = exprCp:sub(numberEnd+1)
+                -- If there is nothing left to process, add number to list
+                if #subExpr > 0 and #rest == 0 then
+                    table.insert(subExpr, remain)
+                    break
+                -- Else, keep going
+                else
+                    exprCp = rest
+                    goto continue
+                end
+            else
+                table.insert(subExpr, remain..exprCp:sub(1, stp-1))
+                exprCp = exprCp:sub(stp+1)
+            end
+        -- No + or - symbol found. Keep entire expression.
+        elseif #subExpr > 0 then
+            table.insert(subExpr, remain..exprCp:sub(1))
+            break
+        else
+            break
+        end
+
+        remain=""
+        ::continue::
+    end
+    return subExpr
+end
+
+local function preprocess(expression)
+    -- Remove spaces
+    local expr = expression:gsub("%s+", "")
+    -- Change symbol for unary minus, to facilitate parsing
+    expr = expr:gsub("([%+%(/*%^])%-", "%1~")
+    expr = expr:gsub("^-", "~")
+    return expr
+end
+
+local function eval(expr, vars)
+	local number = tonumber(expr)
+	if number then return number end
+	
+	-- Negative number
+	if expr:sub(1, 1) == "~" then
+	    number = tonumber(expr:sub(2, #expr))
+	    if number then return -number end
+	end
+	
+	-- If the expression is just a variable,
+	-- replace with result
+	local index = tonumber(expr:match("^%$(%d+)$"))
+	if index then
+		return vars[index]
+	end
+	
+	-- Simplify double minus, in case any previous
+	-- operation resulted in a negative number
+	expr = expr:gsub("%-%-", "+")
+	
+	-- Find nested operations, compute their values
+	-- and save them for later.
+	-- Nested expressions are replaced with variable
+	-- numbers like $1..$n
+	local subExprs = {}
+	local start, stp = expr:find("%b()")
+	while start and stp do
+		local left = expr:sub(1, start-1)
+		local nested = expr:sub(start+1, stp-1)
+		local right = expr:sub(stp+1)
+		
+		-- If it's a function call...
+		local func = left:match("%a%w*$")
+		if func and KNOWN_FUNCTIONS[func] then
+			table.insert(subExprs, KNOWN_FUNCTIONS[func](eval(nested)))
+			-- ...replace whole call with $n
+			expr = left:sub(1, #left-#func).."$"..#subExprs..right
+		else
+			table.insert(subExprs, eval(nested))
+			expr = left.."$"..#subExprs..right
+		end
+		start, stp = expr:find("%b()")
+	end
+	subExprs = vars or subExprs
+	
+	-- Sum
+	local sums = split_minus_plus(expr, "+")
+	if #sums > 0 then
+	   return Reduce(
+	      copy_table(sums, 2),
+	      function(a, b) return eval(a, subExprs)+eval(b, subExprs) end,
+	      sums[1]
+	   )
+	end
+	
+	-- Subtraction
+	local subs = split_minus_plus(expr, "-")
+	if #subs > 0 then
+	   return Reduce(
+	      copy_table(subs, 2),
+	      function(a, b) return eval(a, subExprs)-eval(b, subExprs) end,
+	      subs[1]
+	   )
+	end
+	
+	-- Multiplication
+	local muls = split_op(expr, "*")
+	if #muls > 0 then
+	    return Reduce(
+	        copy_table(muls, 2),
+	        function(a, b) return eval(a, subExprs)*eval(b, subExprs) end,
+	        muls[1]
+	    )
+	end
+	
+	-- Division
+	local divs = split_op(expr, "/")
+	if #divs > 0 then
+	    return Reduce(
+	        copy_table(divs, 2),
+	        function(a, b)
+	        		-- Division by zero
+	        		dvr = eval(b, subExprs)
+	        		if dvr < MIN_ZERO then error("Division by zero") end
+	            return eval(a, subExprs)/dvr
+	        end,
+	        divs[1]
+	    )
+	end
+	
+	-- Exponentiation
+	local exps = split_op(expr, "^")
+	if #exps > 0 then
+	    return Reduce(
+	        copy_table(exps, 2),
+	        function(a, b) return eval(a, subExprs)^eval(b, subExprs) end,
+	        exps[1]
+	    )
+	end
+	
+	-- None of previous basic operations were performed,
+	-- so there must be a single value left
+	local result = #subExprs == 1 and subExprs[1] or nil
+	if result then
+	    if expr:sub(1,1) == "~" then result = -result end
+	end
+	
+	return result
+end 
+
+-- Wrap eval in a protected call to catch errors
+function Parse(expression)
+	local expr = preprocess(expression)
+	local success, result = pcall(eval, expr)
+	if not success then
+		return "Invalid expression"
+	else
+		return result
+	end
+end
+:: .info.pod
+b64$LS1bW3BvZCxhdXRob3I9Ikx1Y2FzIFZpZWdhcyAobHVjYXNkc2EpIixiYnNfaWQ9Il9kZXY3
+MTY0IixjcmVhdGVkPSIyMDI1LTA3LTE5IDEzOjMyOjM1IixpY29uPXVzZXJkYXRhKCJ1OCIsMTYs
+MTYsIjFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMx
+YzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMDExYzFjMWMxYzFj
+MWMxYzFjMWMxYzFjMWMxYzFjMWMwMTFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzAxMWMx
+YzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMDExYzAxMWMwMTAxMWMxYzFjMDExYzFjMWMwMTFj
+MWMwMTFjMDEwMTFjMDExYzFjMWMxYzAxMWMwMTFjMWMxYzAxMWMwMTFjMWMwMTFjMWMxYzFjMWMw
+MTFjMWMxYzFjMDExYzAxMWMxYzAxMWMxYzFjMWMwMTFjMDExYzFjMWMwMTFjMDExYzFjMDExYzFj
+MWMwMTFjMWMxYzAxMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMx
+YzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFj
+MWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMx
+YzFjIiksbW9kaWZpZWQ9IjIwMjUtMDgtMjMgMTk6MDI6MTMiLG5vdGVzPSIiLHJ1bnRpbWU9MjAs
+c2FuZGJveD1mYWxzZSx0aXRsZT0iU2NpdHJvbiIsdmVyc2lvbj0iMS4wIix3b3Jrc3BhY2VzPXt7
+bG9jYXRpb249Im1haW4ubHVhIzUiLHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRpb249ImFsZ29y
+aXRobS5sdWEjMTMiLHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRpb249InBhcnNlci5sdWEjMTIi
+LHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRpb249Imd1aS5sdWEjMTUxIix3b3Jrc3BhY2VfaW5k
+ZXg9MX0se2xvY2F0aW9uPSJjYWxjLmx1YSMxMjUiLHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRp
+b249Im1hdGhlbWF0aWMubHVhIzYiLHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRpb249ImdmeC8w
+LmdmeCIsd29ya3NwYWNlX2luZGV4PTJ9LHtsb2NhdGlvbj0ibWFwLzAubWFwIix3b3Jrc3BhY2Vf
+aW5kZXg9M30se2xvY2F0aW9uPSJzZngvMC5zZngiLHdvcmtzcGFjZV9pbmRleD00fX1dXQ==
+:: [eoc]
