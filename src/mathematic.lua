@@ -1,3 +1,5 @@
+PRECISION=15
+
 local function round(val, cnt)
 	local mult = 10^(cnt or 0)
 	return math.floor(val * mult + 0.5) / mult
