@@ -18,8 +18,6 @@ local KNOWN_FUNCTIONS = {
     fact = Factorial
 }
 
-local PRECISION = 15
-
 local function copy_table(tb, start, stp)
     local newTb = {}
     local final = stp or #tb
