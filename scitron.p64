@@ -2,33 +2,8 @@ picotron cartridge // www.picotron.net
 version 2
 
 :: gfx/
-:: gfx/0.gfx
-b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNS0w
-MS0xNyAxMDozNzo0NCIscmV2aXNpb249Ml1dbHo0AH4AAAASMQAA8yF7WzBdPXtibXA9cHh1AEMg
-EBAE8FYHEAfAF9AXwAcQB-BWLGZsYWdzPTAscGFuX3gIAMt5PTAsem9vbT04fSw_AB-wMQD-----
------------------------------------------------------------XUG09OH19
-:: gfx/.info.pod
-b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTA3LTE5IDEzOjMyOjM1Iixtb2RpZmllZD0iMjAyNS0w
-OC0yMyAxOTowMjoxMyJdXQ==
 :: map/
-:: map/0.map
-b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNS0w
-OC0wNCAyMTozNTo1MyIscmV2aXNpb249Ml1dbHo0AGgAAABYEAAA8Ah7e2JtcD11c2VyZGF0YSgi
-aTE2IiwzMgMALyIwAQD--------------------78QgiKSxoaWRkZW49ZmFsc2UscGFuX3g9MAgA
-0nk9MCx0aWxlX2g9MTYKABB3CgCAem9vbT0xfX0=
-:: map/.info.pod
-b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTA3LTE5IDEzOjMyOjM1Iixtb2RpZmllZD0iMjAyNS0w
-OC0yMyAxOTowMjoxMyJdXQ==
 :: sfx/
-:: sfx/0.sfx
-b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ5Iixtb2RpZmllZD0iMjAyNS0w
-MS0xNyAxMDozNzo0NCIscmV2aXNpb249Ml1dbHo0AKAAAAALCgAA-zBweHUAAygAAAQABA9AEAIO
-AAGgASACoA4ADxAADfDKAQIDQA8PkAQFBgdADJAICQoLQAyQDwwPDQ8ODEAM8P8BAOv-J6oBEAYP
-IBABIAEgAfAAAhACDhABIA8hIAEwD0Dwww8oD--wxg-4Cg--D4AP9w8NAfAJARAGDjAA------_9
-H-8BAKzPyA9AAA8QQP--sPD-AQD-6lD-----KQ==
-:: sfx/.info.pod
-b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTA3LTE5IDEzOjMyOjM1Iixtb2RpZmllZD0iMjAyNS0w
-OC0yMyAxOTowMjoxMyJdXQ==
 :: algorithm.lua
 --[[pod_format="raw",created="2025-08-04 21:56:15",modified="2025-08-04 21:56:15",revision=0]]
 function Reduce(list, func, init)
@@ -433,6 +408,345 @@ function CreateGui()
 	end
 	return Gui
 end
+:: main.lua
+--[[pod_format="raw",created="2025-08-04 21:55:53",modified="2025-08-23 12:51:42",revision=52]]
+include "gui.lua"
+
+Gui = nil
+function _init()
+	fetch("/system/fonts/lil_mono.font"):poke(0x4000)
+	Gui = CreateGui()
+	window{
+		width=Gui.width,
+		height= Gui.height,
+		resizeable = false,
+		title = "Scitron"
+	}
+end
+
+function _update()
+	Gui:update_all()
+end
+
+function show_cpu_usage()
+   print(string.format(
+		"%.2f", stat(1)*100), Gui.width - 10,
+		Gui.height - 10, 11
+	)
+end
+
+function _draw()
+	cls(7)
+	Gui:draw_all()
+	--show_cpu_usage()
+end
+:: mathematic.lua
+--[[pod_format="raw",created="2025-08-15 12:32:38",modified="2025-11-21 23:06:23",revision=28]]
+PRECISION=15
+
+local function round(val, cnt)
+	local mult = 10^(cnt or 0)
+	return math.floor(val * mult + 0.5) / mult
+end
+
+MIN_ZERO = 2^-1074
+
+function Sin(x)
+	local result = math.sin(x)
+	return round(result, PRECISION)
+end
+
+function Cos(x)
+	local result = math.cos(x)
+	return round(result, PRECISION)
+end
+
+function Tan(x)
+	local result = math.tan(x)
+	return round(result, PRECISION)
+end
+
+function Asin(x)
+	local result = math.asin(x)
+	return round(result, PRECISION)
+end
+
+function Acos(x)
+	local result = math.acos(x)
+	return round(result, PRECISION)
+end
+
+function Atan(x)
+	local result = math.atan(x)
+	return round(result, PRECISION)
+end
+
+function Sinh(x)
+	local result = (math.exp(x)-math.exp(-x))/2
+	return round(result, PRECISION)
+end
+
+function Cosh(x)
+	return (math.exp(x)+math.exp(-x))/2
+end
+
+function Tanh(x)
+	local result = Sinh(x)/Cosh(x)
+	return round(result, PRECISION)
+end
+
+function Log10(x)
+	local result = math.log(x, 10)
+	return round(result, PRECISION)
+end
+
+function Ln(x)
+	local result = math.log(x)
+	return round(result, PRECISION)
+end
+
+function Factorial(x)
+	local val = x + 0.0
+	if val == 0.0 then
+		return 1.0
+	else
+		return val*Factorial(val-1)
+	end
+end
+:: parser.lua
+--[[pod_format="raw",created="2025-08-04 21:56:51",modified="2025-11-21 23:13:58",revision=112]]
+include "algorithm.lua"
+include "mathematic.lua"
+
+local KNOWN_FUNCTIONS = {
+    sin = Sin,
+    cos = Cos,
+    tan = Tan,
+    asin = Asin,
+    acos = Acos,
+    atan = Atan,
+    ln = Ln,
+    log = Log10,
+    sqrt = math.sqrt,
+    exp = math.exp,
+    sinh = Sinh,
+    cosh = Cosh,
+    tanh = Tanh,
+    fact = Factorial
+}
+
+local function copy_table(tb, start, stp)
+    local newTb = {}
+    local final = stp or #tb
+    for i = start, final do
+        table.insert(newTb, tb[i])
+    end
+
+    return newTb
+end
+
+-- Used to split expression by operation
+local function split_op(expr, sep)
+    local subExpr = {}
+    local start = 1
+    while start <= #expr do
+        local stp = expr:find(sep, start, true)
+        if stp then
+            table.insert(subExpr, expr:sub(start, stp-1))
+            start = stp+1
+        elseif start > 1 then
+            table.insert(subExpr, expr:sub(start))
+            break
+        else
+            break
+        end
+    end
+    return subExpr
+end
+
+-- Plus and minus are special cases, since there are numbers like 2e+3 or 1.5e-7.
+-- Should not split expr in the middle of a number.
+local function split_minus_plus(expr, sep)
+    local subExpr = {}
+    local exprCp = expr:sub(1)
+    local remain = ""
+    while #exprCp > 0 do
+        local stp = exprCp:find(sep, 1, true)
+        if stp then
+            local numberStart, numberEnd = exprCp:find("(%d+%.?%d*e%"..sep.."%d+)")
+            -- Found scientific notation
+            if numberStart and
+                numberStart <= stp and
+                numberEnd >= stp then
+                
+                remain = remain..exprCp:sub(1, numberEnd)
+                local rest = exprCp:sub(numberEnd+1)
+                -- If there is nothing left to process, add number to list
+                if #subExpr > 0 and #rest == 0 then
+                    table.insert(subExpr, remain)
+                    break
+                -- Else, keep going
+                else
+                    exprCp = rest
+                    goto continue
+                end
+            else
+                table.insert(subExpr, remain..exprCp:sub(1, stp-1))
+                exprCp = exprCp:sub(stp+1)
+            end
+        -- No + or - symbol found. Keep entire expression.
+        elseif #subExpr > 0 then
+            table.insert(subExpr, remain..exprCp:sub(1))
+            break
+        else
+            break
+        end
+
+        remain=""
+        ::continue::
+    end
+    return subExpr
+end
+
+local function preprocess(expression)
+    -- Remove spaces
+    local expr = expression:gsub("%s+", "")
+    -- Change symbol for unary minus, to facilitate parsing
+    expr = expr:gsub("([%+%(/*%^])%-", "%1~")
+    expr = expr:gsub("^-", "~")
+    return expr
+end
+
+local function eval(expr, vars)
+	local number = tonumber(expr)
+	if number then return number end
+	
+	-- Negative number
+	if expr:sub(1, 1) == "~" then
+	    number = tonumber(expr:sub(2, #expr))
+	    if number then return -number end
+	end
+	
+	-- If the expression is just a variable,
+	-- replace with result
+	local index = tonumber(expr:match("^%$(%d+)$"))
+	if index then
+		return vars[index]
+	end
+	
+	-- Simplify double minus, in case any previous
+	-- operation resulted in a negative number
+	expr = expr:gsub("%-%-", "+")
+	
+	-- Find nested operations, compute their values
+	-- and save them for later.
+	-- Nested expressions are replaced with variable
+	-- numbers like $1..$n
+	local subExprs = {}
+	local start, stp = expr:find("%b()")
+	while start and stp do
+		local left = expr:sub(1, start-1)
+		local nested = expr:sub(start+1, stp-1)
+		local right = expr:sub(stp+1)
+		
+		-- If it's a function call...
+		local func = left:match("%a%w*$")
+		if func and KNOWN_FUNCTIONS[func] then
+			table.insert(subExprs, KNOWN_FUNCTIONS[func](eval(nested)))
+			-- ...replace whole call with $n
+			expr = left:sub(1, #left-#func).."$"..#subExprs..right
+		else
+			table.insert(subExprs, eval(nested))
+			expr = left.."$"..#subExprs..right
+		end
+		start, stp = expr:find("%b()")
+	end
+	subExprs = vars or subExprs
+	
+	-- Sum
+	local sums = split_minus_plus(expr, "+")
+	if #sums > 0 then
+	   return Reduce(
+	      copy_table(sums, 2),
+	      function(a, b) return eval(a, subExprs)+eval(b, subExprs) end,
+	      sums[1]
+	   )
+	end
+	
+	-- Subtraction
+	local subs = split_minus_plus(expr, "-")
+	if #subs > 0 then
+	   return Reduce(
+	      copy_table(subs, 2),
+	      function(a, b) return eval(a, subExprs)-eval(b, subExprs) end,
+	      subs[1]
+	   )
+	end
+	
+	-- Multiplication
+	local muls = split_op(expr, "*")
+	if #muls > 0 then
+	    return Reduce(
+	        copy_table(muls, 2),
+	        function(a, b) return eval(a, subExprs)*eval(b, subExprs) end,
+	        muls[1]
+	    )
+	end
+	
+	-- Division
+	local divs = split_op(expr, "/")
+	if #divs > 0 then
+	    return Reduce(
+	        copy_table(divs, 2),
+	        function(a, b)
+	        		-- Division by zero
+	        		dvr = eval(b, subExprs)
+	        		if dvr < MIN_ZERO then error("Division by zero") end
+	            return eval(a, subExprs)/dvr
+	        end,
+	        divs[1]
+	    )
+	end
+	
+	-- Exponentiation
+	local exps = split_op(expr, "^")
+	if #exps > 0 then
+	    return Reduce(
+	        copy_table(exps, 2),
+	        function(a, b) return eval(a, subExprs)^eval(b, subExprs) end,
+	        exps[1]
+	    )
+	end
+	
+	-- None of previous basic operations were performed,
+	-- so there must be a single value left
+	local result = #subExprs == 1 and subExprs[1] or nil
+	if result then
+	    if expr:sub(1,1) == "~" then result = -result end
+	end
+	
+	return result
+end 
+
+-- Wrap eval in a protected call to catch errors
+function Parse(expression)
+	local expr = preprocess(expression)
+	local success, result = pcall(eval, expr)
+	if not success then
+		return "Invalid expression"
+	else
+		return result
+	end
+end
+:: .info.pod
+--[[pod,author="Lucas Viegas (lucasdsa)",bbs_id="_dev7164",created="2025-07-19 13:32:35",icon=userdata("u8",16,16,"1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c011c1c1c1c1c1c1c1c1c1c1c1c1c1c1c011c1c1c1c1c1c1c1c1c1c1c1c1c1c1c011c1c1c1c1c1c1c1c1c1c1c1c1c1c1c011c011c01011c1c1c011c1c1c011c1c011c01011c011c1c1c1c011c011c1c1c011c011c1c011c1c1c1c1c011c1c1c1c011c011c1c011c1c1c1c011c011c1c1c011c011c1c011c1c1c011c1c1c011c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c"),modified="2025-11-21 23:13:58",notes="",runtime=24,sandbox=false,title="Scitron",version="1.0",workspaces={{location="main.lua#5",workspace_index=1},{location="algorithm.lua#13",workspace_index=1},{location="parser.lua#19",workspace_index=1},{location="gui.lua#151",workspace_index=1},{location="calc.lua#125",workspace_index=1},{location="mathematic.lua#12",workspace_index=1},{location="gfx/0.gfx",workspace_index=2},{location="map/0.map",workspace_index=3},{location="sfx/0.sfx",workspace_index=4}}]]
+:: gfx/.info.pod
+--[[pod,created="2025-07-19 13:32:35",modified="2025-11-21 23:13:58"]]
+:: gfx/0.gfx
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNS0w
+MS0xNyAxMDozNzo0NCIscmV2aXNpb249Ml1dbHo0AH4AAAASMQAA8yF7WzBdPXtibXA9cHh1AEMg
+EBAE8FYHEAfAF9AXwAcQB-BWLGZsYWdzPTAscGFuX3gIAMt5PTAsem9vbT04fSw_AB-wMQD-----
+-----------------------------------------------------------XUG09OH19
 :: label.qoi
 b64$cW9pZgAAAeAAAAEOBAH_vZrf-f39-f39-f39-f39-f394f5lRojEB-39-f39-cA6wAfAOsAH
 xzrBB8A6wQfLOsEHyDrEB8b_JGOwxgfJOgc6B806xQf9-f39-fw6wAfCOsAHxjrBB8A6wQfGOsIH
@@ -654,355 +968,19 @@ wDX9-f39-f3YKMA1-c0owDX9-f39-f3ZKDX9zig1-f39-f392SjANf3NKMA1-f39-f392CjANf3O
 KDX9-f39-f3ZKDX9zyg1-f39-f392CjANf3OKMA1-f39-f392Cg1-c8oNf39-f39-dgowDX9zyjA
 Nf39-f39-dYowDX9zyjANf39-f39-dcoNf3QKDX9-f39-f3YKDX9zyjANf39-f39-dcowDX9zyg1
 -e0AAAAAAAAAAQ==
-:: main.lua
---[[pod_format="raw",created="2025-08-04 21:55:53",modified="2025-08-23 12:51:42",revision=52]]
-include "gui.lua"
-
-Gui = nil
-function _init()
-	fetch("/system/fonts/lil_mono.font"):poke(0x4000)
-	Gui = CreateGui()
-	window{
-		width=Gui.width,
-		height= Gui.height,
-		resizeable = false,
-		title = "Scitron"
-	}
-end
-
-function _update()
-	Gui:update_all()
-end
-
-function show_cpu_usage()
-   print(string.format(
-		"%.2f", stat(1)*100), Gui.width - 10,
-		Gui.height - 10, 11
-	)
-end
-
-function _draw()
-	cls(7)
-	Gui:draw_all()
-	--show_cpu_usage()
-end
-:: mathematic.lua
---[[pod_format="raw",created="2025-08-15 12:32:38",modified="2025-08-23 17:23:09",revision=23]]
-local function round(val, cnt)
-	local mult = 10^(cnt or 0)
-	return math.floor(val * mult + 0.5) / mult
-end
-
-MIN_ZERO = 2^-1074
-
-function Sin(x)
-	local result = math.sin(x)
-	return round(result, PRECISION)
-end
-
-function Cos(x)
-	local result = math.cos(x)
-	return round(result, PRECISION)
-end
-
-function Tan(x)
-	local result = math.tan(x)
-	return round(result, PRECISION)
-end
-
-function Asin(x)
-	local result = math.asin(x)
-	return round(result, PRECISION)
-end
-
-function Acos(x)
-	local result = math.acos(x)
-	return round(result, PRECISION)
-end
-
-function Atan(x)
-	local result = math.atan(x)
-	return round(result, PRECISION)
-end
-
-function Sinh(x)
-	local result = (math.exp(x)-math.exp(-x))/2
-	return round(result, PRECISION)
-end
-
-function Cosh(x)
-	return (math.exp(x)+math.exp(-x))/2
-end
-
-function Tanh(x)
-	local result = Sinh(x)/Cosh(x)
-	return round(result, PRECISION)
-end
-
-function Log10(x)
-	local result = math.log(x, 10)
-	return round(result, PRECISION)
-end
-
-function Ln(x)
-	local result = math.log(x)
-	return round(result, PRECISION)
-end
-
-function Factorial(x)
-	local val = x + 0.0
-	if val == 0.0 then
-		return 1.0
-	else
-		return val*Factorial(val-1)
-	end
-end
-:: parser.lua
---[[pod_format="raw",created="2025-08-04 21:56:51",modified="2025-08-23 16:44:37",revision=110]]
-include "algorithm.lua"
-include "mathematic.lua"
-
-local KNOWN_FUNCTIONS = {
-    sin = Sin,
-    cos = Cos,
-    tan = Tan,
-    asin = Asin,
-    acos = Acos,
-    atan = Atan,
-    ln = Ln,
-    log = Log10,
-    sqrt = math.sqrt,
-    exp = math.exp,
-    sinh = Sinh,
-    cosh = Cosh,
-    tanh = Tanh,
-    fact = Factorial
-}
-
-local PRECISION = 15
-
-local function copy_table(tb, start, stp)
-    local newTb = {}
-    local final = stp or #tb
-    for i = start, final do
-        table.insert(newTb, tb[i])
-    end
-
-    return newTb
-end
-
--- Used to split expression by operation
-local function split_op(expr, sep)
-    local subExpr = {}
-    local start = 1
-    while start <= #expr do
-        local stp = expr:find(sep, start, true)
-        if stp then
-            table.insert(subExpr, expr:sub(start, stp-1))
-            start = stp+1
-        elseif start > 1 then
-            table.insert(subExpr, expr:sub(start))
-            break
-        else
-            break
-        end
-    end
-    return subExpr
-end
-
--- Plus and minus are special cases, since there are numbers like 2e+3 or 1.5e-7.
--- Should not split expr in the middle of a number.
-local function split_minus_plus(expr, sep)
-    local subExpr = {}
-    local exprCp = expr:sub(1)
-    local remain = ""
-    while #exprCp > 0 do
-        local stp = exprCp:find(sep, 1, true)
-        if stp then
-            local numberStart, numberEnd = exprCp:find("(%d+%.?%d*e%"..sep.."%d+)")
-            -- Found scientific notation
-            if numberStart and
-                numberStart <= stp and
-                numberEnd >= stp then
-                
-                remain = remain..exprCp:sub(1, numberEnd)
-                local rest = exprCp:sub(numberEnd+1)
-                -- If there is nothing left to process, add number to list
-                if #subExpr > 0 and #rest == 0 then
-                    table.insert(subExpr, remain)
-                    break
-                -- Else, keep going
-                else
-                    exprCp = rest
-                    goto continue
-                end
-            else
-                table.insert(subExpr, remain..exprCp:sub(1, stp-1))
-                exprCp = exprCp:sub(stp+1)
-            end
-        -- No + or - symbol found. Keep entire expression.
-        elseif #subExpr > 0 then
-            table.insert(subExpr, remain..exprCp:sub(1))
-            break
-        else
-            break
-        end
-
-        remain=""
-        ::continue::
-    end
-    return subExpr
-end
-
-local function preprocess(expression)
-    -- Remove spaces
-    local expr = expression:gsub("%s+", "")
-    -- Change symbol for unary minus, to facilitate parsing
-    expr = expr:gsub("([%+%(/*%^])%-", "%1~")
-    expr = expr:gsub("^-", "~")
-    return expr
-end
-
-local function eval(expr, vars)
-	local number = tonumber(expr)
-	if number then return number end
-	
-	-- Negative number
-	if expr:sub(1, 1) == "~" then
-	    number = tonumber(expr:sub(2, #expr))
-	    if number then return -number end
-	end
-	
-	-- If the expression is just a variable,
-	-- replace with result
-	local index = tonumber(expr:match("^%$(%d+)$"))
-	if index then
-		return vars[index]
-	end
-	
-	-- Simplify double minus, in case any previous
-	-- operation resulted in a negative number
-	expr = expr:gsub("%-%-", "+")
-	
-	-- Find nested operations, compute their values
-	-- and save them for later.
-	-- Nested expressions are replaced with variable
-	-- numbers like $1..$n
-	local subExprs = {}
-	local start, stp = expr:find("%b()")
-	while start and stp do
-		local left = expr:sub(1, start-1)
-		local nested = expr:sub(start+1, stp-1)
-		local right = expr:sub(stp+1)
-		
-		-- If it's a function call...
-		local func = left:match("%a%w*$")
-		if func and KNOWN_FUNCTIONS[func] then
-			table.insert(subExprs, KNOWN_FUNCTIONS[func](eval(nested)))
-			-- ...replace whole call with $n
-			expr = left:sub(1, #left-#func).."$"..#subExprs..right
-		else
-			table.insert(subExprs, eval(nested))
-			expr = left.."$"..#subExprs..right
-		end
-		start, stp = expr:find("%b()")
-	end
-	subExprs = vars or subExprs
-	
-	-- Sum
-	local sums = split_minus_plus(expr, "+")
-	if #sums > 0 then
-	   return Reduce(
-	      copy_table(sums, 2),
-	      function(a, b) return eval(a, subExprs)+eval(b, subExprs) end,
-	      sums[1]
-	   )
-	end
-	
-	-- Subtraction
-	local subs = split_minus_plus(expr, "-")
-	if #subs > 0 then
-	   return Reduce(
-	      copy_table(subs, 2),
-	      function(a, b) return eval(a, subExprs)-eval(b, subExprs) end,
-	      subs[1]
-	   )
-	end
-	
-	-- Multiplication
-	local muls = split_op(expr, "*")
-	if #muls > 0 then
-	    return Reduce(
-	        copy_table(muls, 2),
-	        function(a, b) return eval(a, subExprs)*eval(b, subExprs) end,
-	        muls[1]
-	    )
-	end
-	
-	-- Division
-	local divs = split_op(expr, "/")
-	if #divs > 0 then
-	    return Reduce(
-	        copy_table(divs, 2),
-	        function(a, b)
-	        		-- Division by zero
-	        		dvr = eval(b, subExprs)
-	        		if dvr < MIN_ZERO then error("Division by zero") end
-	            return eval(a, subExprs)/dvr
-	        end,
-	        divs[1]
-	    )
-	end
-	
-	-- Exponentiation
-	local exps = split_op(expr, "^")
-	if #exps > 0 then
-	    return Reduce(
-	        copy_table(exps, 2),
-	        function(a, b) return eval(a, subExprs)^eval(b, subExprs) end,
-	        exps[1]
-	    )
-	end
-	
-	-- None of previous basic operations were performed,
-	-- so there must be a single value left
-	local result = #subExprs == 1 and subExprs[1] or nil
-	if result then
-	    if expr:sub(1,1) == "~" then result = -result end
-	end
-	
-	return result
-end 
-
--- Wrap eval in a protected call to catch errors
-function Parse(expression)
-	local expr = preprocess(expression)
-	local success, result = pcall(eval, expr)
-	if not success then
-		return "Invalid expression"
-	else
-		return result
-	end
-end
-:: .info.pod
-b64$LS1bW3BvZCxhdXRob3I9Ikx1Y2FzIFZpZWdhcyAobHVjYXNkc2EpIixiYnNfaWQ9Il9kZXY3
-MTY0IixjcmVhdGVkPSIyMDI1LTA3LTE5IDEzOjMyOjM1IixpY29uPXVzZXJkYXRhKCJ1OCIsMTYs
-MTYsIjFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMx
-YzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMDExYzFjMWMxYzFj
-MWMxYzFjMWMxYzFjMWMxYzFjMWMwMTFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzAxMWMx
-YzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMDExYzAxMWMwMTAxMWMxYzFjMDExYzFjMWMwMTFj
-MWMwMTFjMDEwMTFjMDExYzFjMWMxYzAxMWMwMTFjMWMxYzAxMWMwMTFjMWMwMTFjMWMxYzFjMWMw
-MTFjMWMxYzFjMDExYzAxMWMxYzAxMWMxYzFjMWMwMTFjMDExYzFjMWMwMTFjMDExYzFjMDExYzFj
-MWMwMTFjMWMxYzAxMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMx
-YzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFj
-MWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMxYzFjMWMx
-YzFjIiksbW9kaWZpZWQ9IjIwMjUtMDgtMjMgMTk6MDI6MTMiLG5vdGVzPSIiLHJ1bnRpbWU9MjAs
-c2FuZGJveD1mYWxzZSx0aXRsZT0iU2NpdHJvbiIsdmVyc2lvbj0iMS4wIix3b3Jrc3BhY2VzPXt7
-bG9jYXRpb249Im1haW4ubHVhIzUiLHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRpb249ImFsZ29y
-aXRobS5sdWEjMTMiLHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRpb249InBhcnNlci5sdWEjMTIi
-LHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRpb249Imd1aS5sdWEjMTUxIix3b3Jrc3BhY2VfaW5k
-ZXg9MX0se2xvY2F0aW9uPSJjYWxjLmx1YSMxMjUiLHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRp
-b249Im1hdGhlbWF0aWMubHVhIzYiLHdvcmtzcGFjZV9pbmRleD0xfSx7bG9jYXRpb249ImdmeC8w
-LmdmeCIsd29ya3NwYWNlX2luZGV4PTJ9LHtsb2NhdGlvbj0ibWFwLzAubWFwIix3b3Jrc3BhY2Vf
-aW5kZXg9M30se2xvY2F0aW9uPSJzZngvMC5zZngiLHdvcmtzcGFjZV9pbmRleD00fX1dXQ==
+:: map/.info.pod
+--[[pod,created="2025-07-19 13:32:35",modified="2025-11-21 23:13:58"]]
+:: map/0.map
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ4Iixtb2RpZmllZD0iMjAyNS0w
+OC0wNCAyMTozNTo1MyIscmV2aXNpb249Ml1dbHo0AGgAAABYEAAA8Ah7e2JtcD11c2VyZGF0YSgi
+aTE2IiwzMgMALyIwAQD--------------------78QgiKSxoaWRkZW49ZmFsc2UscGFuX3g9MAgA
+0nk9MCx0aWxlX2g9MTYKABB3CgCAem9vbT0xfX0=
+:: sfx/.info.pod
+--[[pod,created="2025-07-19 13:32:35",modified="2025-11-21 23:13:58"]]
+:: sfx/0.sfx
+b64$LS1bW3BvZCxjcmVhdGVkPSIyMDI1LTAxLTE3IDEwOjM1OjQ5Iixtb2RpZmllZD0iMjAyNS0w
+MS0xNyAxMDozNzo0NCIscmV2aXNpb249Ml1dbHo0AKAAAAALCgAA-zBweHUAAygAAAQABA9AEAIO
+AAGgASACoA4ADxAADfDKAQIDQA8PkAQFBgdADJAICQoLQAyQDwwPDQ8ODEAM8P8BAOv-J6oBEAYP
+IBABIAEgAfAAAhACDhABIA8hIAEwD0Dwww8oD--wxg-4Cg--D4AP9w8NAfAJARAGDjAA------_9
+H-8BAKzPyA9AAA8QQP--sPD-AQD-6lD-----KQ==
 :: [eoc]
